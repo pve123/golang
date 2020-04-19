@@ -16,6 +16,7 @@ type extractedJob struct {
 	title   string
 	loc     string
 	company string
+	link    string
 }
 
 var baseURL = "http://www.jobkorea.co.kr/Search/?stext=Python"
@@ -23,10 +24,13 @@ var baseURL = "http://www.jobkorea.co.kr/Search/?stext=Python"
 func main() {
 
 	var jobs []extractedJob
+	c := make(chan []extractedJob)
 	getTotalPages := getPages()
 	for i := 0; i <= getTotalPages; i++ {
-		job := getPage(i + 1)
-		jobs = append(jobs, job...)
+		go getPage(i+1, c)
+	}
+	for i := 0; i <= getTotalPages; i++ {
+		jobs = append(jobs, <-c...)
 	}
 	WriteJob(jobs)
 }
@@ -40,12 +44,12 @@ func WriteJob(jobs []extractedJob) {
 
 	defer w.Flush()
 
-	header := []string{"공고제목", "회사위치", "회사이름"}
+	header := []string{"공고제목", "회사위치", "회사이름", "링크"}
 	wErr := w.Write(header)
 	CheckErr(wErr)
 
 	for _, val := range jobs {
-		JobsCon := []string{val.title, val.loc, val.company}
+		JobsCon := []string{val.title, val.loc, val.company, "http://www.jobkorea.co.kr/" + val.link}
 		wErr := w.Write(JobsCon)
 		CheckErr(wErr)
 	}
@@ -53,8 +57,8 @@ func WriteJob(jobs []extractedJob) {
 }
 
 //get Page
-func getPage(page int) []extractedJob {
-	var first, second, third []string
+func getPage(page int, c chan []extractedJob) {
+	var first, second, third, four []string
 	var jobs []extractedJob
 	PageURL := baseURL + "&Page_No=" + strconv.Itoa(page)
 	fmt.Println(PageURL)
@@ -74,7 +78,6 @@ func getPage(page int) []extractedJob {
 		CleanString(title)
 		first = append(first, title)
 	})
-
 	doc.Find(".loc.long").Each(func(i int, card *goquery.Selection) {
 		loc := card.Text()
 		CleanString(loc)
@@ -86,11 +89,17 @@ func getPage(page int) []extractedJob {
 		third = append(third, company)
 	})
 
+	doc.Find(".title.dev_view").Each(func(i int, card *goquery.Selection) {
+		link, _ := card.Attr("href")
+		CleanString(link)
+		four = append(four, link)
+	})
+
 	for i := 0; i < 20; i++ {
-		job := extractedJob{title: first[i], loc: second[i], company: third[i]}
+		job := extractedJob{title: first[i], loc: second[i], company: third[i], link: four[i]}
 		jobs = append(jobs, job)
 	}
-	return jobs
+	c <- jobs
 }
 
 //get Pages All
